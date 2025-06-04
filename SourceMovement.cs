@@ -1,7 +1,10 @@
 using UnityEngine;
+using UdonSharp;
+using VRC.SDKBase;
+   
 
 [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
-public class SourceMovement : MonoBehaviour
+public class SourceMovement : UdonSharpBehaviour
 {
     [Header("Source Movement Settings")]
     public float moveSpeed = 7.0f;
@@ -38,6 +41,7 @@ public class SourceMovement : MonoBehaviour
 
     void Update()
     {
+        ConstantlyTeleportOwner(); // Ensure the owner is always teleported to the local position
         HandleMouseLook();
         HandleMovementInput();
         HandleJumpInput();
@@ -164,10 +168,12 @@ public class SourceMovement : MonoBehaviour
 
         rb.velocity += new Vector3(add.x, 0, add.z);
     }
-}
 
-// EDIT SO IT ALSO CONSTANTLY TELEPORTS OWNER TO LOCAL POSITION OF THE COMPOENENT SCRIPT IS ATTACHED TO. AND MAKE IT SPAWN AN INSTANCE FOR EACH NEW PLAYER. (spawn only for IsLocal) 
-// SO PRETTY MUCH HAVE A CAPSULIDE COLLIDER WITH A RIGIDBODY WITH THIS SCRIPT ATTACHED AND EVERY PLAYER HAS ONE FOR THEMSELVES.
-// 
-// ADD FULL AIR STRAFE LOGIC FROM CSTRIKE
-// IF NOT WORKING, MAKE IT SIMPLE. TELEPORT PLAY LOOP AND USE W TO MOVE, THAN WORK OFF THAT BASE
+    void ConstantlyTeleportOwner()
+    {
+        VRCPlayerApi localPlayer = Networking.GetOwner(gameObject);
+        Vector3 localPosition = transform.position; 
+        Quaternion localRotation = transform.rotation; 
+        localPlayer.TeleportTo(localPosition, localRotation);
+    }
+}
