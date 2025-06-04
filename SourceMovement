@@ -1,0 +1,123 @@
+using UnityEngine;
+
+[RequireComponent(typeof(Rigidbody))]
+public class SourceMovement : MonoBehaviour
+{
+    public float moveSpeed = 7.0f;
+    public float airAcceleration = 10.0f;
+    public float airMaxSpeed = 1.5f;
+    public float friction = 6.0f;
+    public float sensitivity = 2.0f;
+    public float jumpForce = 5.0f;
+    public float groundCheckDistance = 0.1f;
+
+    private Rigidbody rb;
+    private Vector3 moveInput;
+    private Vector3 wishDir;
+    private Transform body;
+    private CapsuleCollider capsule;
+
+    private bool grounded = false;
+    private bool jumpQueued = false;
+
+    void Start()
+    {
+        rb = GetComponent<Rigidbody>();
+        rb.freezeRotation = true;
+
+        body = transform;
+        capsule = GetComponent<CapsuleCollider>();
+    }
+
+    void Update()
+    {
+        HandleMouseLook();
+        HandleMovementInput();
+        HandleJumpInput();
+        CheckGrounded();
+    }
+
+    void FixedUpdate()
+    {
+        if (grounded)
+        {
+            GroundMove();
+            if (jumpQueued)
+            {
+                rb.velocity = new Vector3(rb.velocity.x, 0, rb.velocity.z); // Reset vertical
+                rb.AddForce(Vector3.up * jumpForce, ForceMode.VelocityChange);
+                jumpQueued = false;
+                grounded = false;
+            }
+        }
+        else
+        {
+            AirMove();
+        }
+    }
+
+    void HandleMouseLook()
+    {
+        float mouseX = Input.GetAxisRaw("Mouse X") * sensitivity;
+        body.Rotate(Vector3.up * mouseX);
+    }
+
+    void HandleMovementInput()
+    {
+        float forward = Input.GetKey(KeyCode.W) ? 1 : Input.GetKey(KeyCode.S) ? -1 : 0;
+        float strafe = Input.GetKey(KeyCode.D) ? 1 : Input.GetKey(KeyCode.A) ? -1 : 0;
+
+        moveInput = new Vector3(strafe, 0, forward).normalized;
+        wishDir = body.TransformDirection(moveInput);
+    }
+
+    void HandleJumpInput()
+    {
+        if (Input.GetKeyDown(KeyCode.Space) && grounded)
+        {
+            jumpQueued = true;
+        }
+    }
+
+    void CheckGrounded()
+    {
+        float rayLength = (capsule.height / 2) + groundCheckDistance;
+        grounded = Physics.Raycast(transform.position, Vector3.down, rayLength + 0.01f);
+    }
+
+    void AirMove()
+    {
+        Vector3 velocity = rb.velocity;
+
+        float currentSpeed = Vector3.Dot(velocity, wishDir);
+        float addSpeed = airMaxSpeed - currentSpeed;
+
+        if (addSpeed <= 0)
+            return;
+
+        float accelSpeed = airAcceleration * Time.fixedDeltaTime * airMaxSpeed;
+        if (accelSpeed > addSpeed)
+            accelSpeed = addSpeed;
+
+        rb.velocity += wishDir * accelSpeed;
+    }
+
+    void GroundMove()
+    {
+        Vector3 velocity = rb.velocity;
+        Vector3 horizontalVel = new Vector3(velocity.x, 0, velocity.z);
+        float speed = horizontalVel.magnitude;
+
+        if (speed != 0)
+        {
+            float drop = speed * friction * Time.fixedDeltaTime;
+            float newSpeed = Mathf.Max(speed - drop, 0);
+            rb.velocity = new Vector3(horizontalVel.normalized.x * newSpeed, velocity.y, horizontalVel.normalized.z * newSpeed);
+        }
+
+        rb.velocity += wishDir * moveSpeed;
+    }
+}
+
+// EDIT SO IT ALSO CONSTANTLY TELEPORTS OWNER TO LOCAL POSITION OF THE COMPOENENT SCRIPT IS ATTACHED TO. AND MAKE IT SPAWN AN INSTANCE FOR EACH NEW PLAYER. 
+// SO PRETTY MUCH HAVE A CAPSULIDE COLLIDER WITH A RIGIDBODY WITH THIS SCRIPT ATTACHED AND EVERY PLAYER HAS ONE FOR THEMSELVES.
