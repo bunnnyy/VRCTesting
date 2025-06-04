@@ -1,32 +1,39 @@
 using UnityEngine;
 
-[RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
 public class SourceMovement : MonoBehaviour
 {
+    [Header("Source Movement Settings")]
     public float moveSpeed = 7.0f;
-    public float airAcceleration = 10.0f;
-    public float airMaxSpeed = 1.5f;
-    public float friction = 6.0f;
-    public float sensitivity = 2.0f;
+    public float maxGroundSpeed = 30.0f;
+    public float maxAirSpeed = 30.0f;
+    public float airAccelerate = 10.0f;     // sv_airaccelerate
+    public float airControl = 0.3f;         // similar to sv_aircontrol
+    public float groundAccelerate = 5.0f;   // sv_accelerate
+    public float friction = 6.0f;           // sv_friction
     public float jumpForce = 5.0f;
+    public float sensitivity = 2.0f;
     public float groundCheckDistance = 0.1f;
 
     private Rigidbody rb;
+    private CapsuleCollider capsule;
+    private Transform body;
+
     private Vector3 moveInput;
     private Vector3 wishDir;
-    private Transform body;
-    private CapsuleCollider capsule;
-
     private bool grounded = false;
     private bool jumpQueued = false;
+
+    private float lastYaw;
 
     void Start()
     {
         rb = GetComponent<Rigidbody>();
-        rb.freezeRotation = true;
-
-        body = transform;
         capsule = GetComponent<CapsuleCollider>();
+        body = transform;
+
+        rb.freezeRotation = true;
+        lastYaw = body.eulerAngles.y;
     }
 
     void Update()
@@ -41,10 +48,11 @@ public class SourceMovement : MonoBehaviour
     {
         if (grounded)
         {
-            GroundMove();
+            ApplyFriction();
+            Accelerate(wishDir, moveSpeed, groundAccelerate, maxGroundSpeed);
             if (jumpQueued)
             {
-                rb.velocity = new Vector3(rb.velocity.x, 0, rb.velocity.z); // Reset vertical
+                rb.velocity = new Vector3(rb.velocity.x, 0, rb.velocity.z);
                 rb.AddForce(Vector3.up * jumpForce, ForceMode.VelocityChange);
                 jumpQueued = false;
                 grounded = false;
@@ -52,7 +60,8 @@ public class SourceMovement : MonoBehaviour
         }
         else
         {
-            AirMove();
+            Accelerate(wishDir, moveSpeed, airAccelerate, maxAirSpeed);
+            ApplyAirStrafe();
         }
     }
 
@@ -85,37 +94,75 @@ public class SourceMovement : MonoBehaviour
         grounded = Physics.Raycast(transform.position, Vector3.down, rayLength + 0.01f);
     }
 
-    void AirMove()
+    void ApplyFriction()
     {
         Vector3 velocity = rb.velocity;
-
-        float currentSpeed = Vector3.Dot(velocity, wishDir);
-        float addSpeed = airMaxSpeed - currentSpeed;
-
-        if (addSpeed <= 0)
-            return;
-
-        float accelSpeed = airAcceleration * Time.fixedDeltaTime * airMaxSpeed;
-        if (accelSpeed > addSpeed)
-            accelSpeed = addSpeed;
-
-        rb.velocity += wishDir * accelSpeed;
-    }
-
-    void GroundMove()
-    {
-        Vector3 velocity = rb.velocity;
-        Vector3 horizontalVel = new Vector3(velocity.x, 0, velocity.z);
-        float speed = horizontalVel.magnitude;
+        Vector3 lateral = new Vector3(velocity.x, 0, velocity.z);
+        float speed = lateral.magnitude;
 
         if (speed != 0)
         {
             float drop = speed * friction * Time.fixedDeltaTime;
             float newSpeed = Mathf.Max(speed - drop, 0);
-            rb.velocity = new Vector3(horizontalVel.normalized.x * newSpeed, velocity.y, horizontalVel.normalized.z * newSpeed);
+            if (newSpeed != speed)
+            {
+                newSpeed /= speed;
+                rb.velocity = new Vector3(lateral.x * newSpeed, velocity.y, lateral.z * newSpeed);
+            }
         }
+    }
 
-        rb.velocity += wishDir * moveSpeed;
+    void Accelerate(Vector3 wishDir, float wishSpeed, float accel, float maxSpeed)
+    {
+        if (wishSpeed == 0 || wishDir == Vector3.zero)
+            return;
+
+        Vector3 velocity = rb.velocity;
+        Vector3 horizontalVel = new Vector3(velocity.x, 0, velocity.z);
+
+        float currentSpeed = Vector3.Dot(horizontalVel, wishDir);
+        float addSpeed = Mathf.Min(wishSpeed, maxSpeed) - currentSpeed;
+
+        if (addSpeed <= 0)
+            return;
+
+        float accelSpeed = accel * Time.fixedDeltaTime * wishSpeed;
+        if (accelSpeed > addSpeed)
+            accelSpeed = addSpeed;
+
+        rb.velocity += new Vector3(wishDir.x * accelSpeed, 0, wishDir.z * accelSpeed);
+    }
+
+    void ApplyAirStrafe()
+    {
+        float yawDelta = Mathf.DeltaAngle(lastYaw, body.eulerAngles.y);
+        lastYaw = body.eulerAngles.y;
+
+        bool pressingA = Input.GetKey(KeyCode.A);
+        bool pressingD = Input.GetKey(KeyCode.D);
+        bool pressingW = Input.GetKey(KeyCode.W);
+        bool pressingS = Input.GetKey(KeyCode.S);
+
+        if (!(pressingA || pressingD) || (pressingW || pressingS))
+            return;
+
+        Vector3 velocity = rb.velocity;
+        Vector3 horizontalVel = new Vector3(velocity.x, 0, velocity.z);
+        float speed = horizontalVel.magnitude;
+
+        if (speed < 0.1f)
+            return;
+
+        Vector3 forward = body.forward;
+        Vector3 right = body.right;
+
+        float strafeDir = pressingA ? -1f : 1f;
+        float inputYawInfluence = yawDelta * strafeDir;
+
+        float control = airControl * Time.fixedDeltaTime * speed;
+        Vector3 add = right * inputYawInfluence * control;
+
+        rb.velocity += new Vector3(add.x, 0, add.z);
     }
 }
 
